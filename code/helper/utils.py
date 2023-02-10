@@ -6,18 +6,25 @@ from datetime import datetime, date, timedelta
 import time
 
 def get_all_functions(module):
-    functions = {}
-    for f in [module.__dict__.get(a) for a in dir(module) if isinstance(module.__dict__.get(a), types.FunctionType)]:
-        functions[f.__name__] = f
-    return functions
+    return {
+        f.__name__: f
+        for f in [
+            module.__dict__.get(a)
+            for a in dir(module)
+            if isinstance(module.__dict__.get(a), types.FunctionType)
+        ]
+    }
 
 def getRandomString(size):
     import string
-    return ''.join(random.choice(string.ascii_letters+string.digits) for i in range(size))
+    return ''.join(
+        random.choice(string.ascii_letters + string.digits)
+        for _ in range(size)
+    )
 
 def getRandomNumber(size):
     import string
-    return ''.join(random.choice(string.digits) for i in range(size))
+    return ''.join(random.choice(string.digits) for _ in range(size))
 
 def base64ToBase64url(base64):
     return base64.replace('+','-').replace('/','_').replace('=','')
@@ -40,10 +47,11 @@ def get_md5(string1):
 
 def copy_dict(sd, keys=[]):
     import copy
-    if not keys:
-        return copy.copy(sd)
-    else:
-        return dict([(key, val) for key, val in sd.items() if key in keys])
+    return (
+        dict([(key, val) for key, val in sd.items() if key in keys])
+        if keys
+        else copy.copy(sd)
+    )
 
 def check_port(address, port, timeout=5):
     if not isinstance(port, int):
@@ -81,7 +89,7 @@ def prefixStorageDir(folder):
     if not os.path.isdir('../storage'):
         os.mkdir('../storage')
     if folder.startswith('/'):
-        folder = '../storage' + folder
+        folder = f'../storage{folder}'
     else:
         folder = os.path.join('../storage', folder)
     return folder

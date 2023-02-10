@@ -18,9 +18,6 @@ class CtrlViewController(object):
     def GET(self):
         render = variant.get_render(web.ctx.path[1:])
         pagedata = {"realhome": web.ctx.get('realhome', '')}
-        if render:
-            return render(pagedata)
-        else:
-            return web.notfound()
+        return render(pagedata) if render else web.notfound()
 
 

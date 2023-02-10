@@ -17,7 +17,7 @@ class DateTimeJSONEncoder(json.JSONEncoder):
         elif isinstance(obj, timedelta):
             s = str(obj)
             if len(s)==7:
-                s = '0'+s
+                s = f'0{s}'
             return s
         else:
             try:
@@ -54,11 +54,12 @@ def get_yyyymmdd(dt=None):
     return dt.year*10000 + dt.month*100 + dt.day
 
 def date_add(days,d=None):
-    if not d: d = datetime.today()
+    if not d:
+        d = datetime.now()
     return d + timedelta(days=days)
 
 def month_add(months,ts=None):
-    d = datetime.fromtimestamp(ts if ts else time.time())
+    d = datetime.fromtimestamp(ts or time.time())
     nm = d.month + months
     ny = d.year
     nd = d.day
@@ -80,16 +81,12 @@ def month_add(months,ts=None):
     return datetime(ny, nm, nd, d.hour, d.minute, d.second, d.microsecond).timestamp()
 
 def is_leap_year(year_num):
-    if year_num % 100 == 0:
-        if year_num % 400 == 0:
-            return True
-        else:
-            return False
-    else:
-        if year_num % 4 == 0:
-            return True
-        else:
-            return False
+    return (
+        year_num % 100 == 0
+        and year_num % 400 == 0
+        or year_num % 100 != 0
+        and year_num % 4 == 0
+    )
 
 def get_ts_from_utcstr(dstr):
     try:
@@ -103,18 +100,18 @@ def get_ts_from_utcstr(dstr):
             z = '+00:00'
         else:
             z = ''
-        dt = datetime.fromisoformat('%sT%s%s'%(d, t, z))
+        dt = datetime.fromisoformat(f'{d}T{t}{z}')
         return dt.timestamp()
     except Exception as e:
         traceback.print_exc()
         return 0
 
 def get_utcstr_from_ts(ts):
-    return '%s.%s+00:00'%(time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)), datetime.fromtimestamp(ts).microsecond)
+    return f'{time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts))}.{datetime.fromtimestamp(ts).microsecond}+00:00'
 
 def get_docker_status(Running, ExitCode, StartedAt):
-    retval = 'Up' if Running else ('Exit (%s)'%ExitCode)
-    retval += ' at ' + StartedAt[:19] + 'Z'
+    retval = 'Up' if Running else f'Exit ({ExitCode})'
+    retval += f' at {StartedAt[:19]}Z'
     return retval
 
 

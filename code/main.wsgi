@@ -17,13 +17,8 @@ def sig_handler(signum, frame):
     raise SystemExit()
 
 def main():
-    urls = []
-    urls.extend([
-        '/mildred', docapi.app_api,
-        '',         webapp.app_www,
-    ])
-    app = web.application(urls, globals(), autoreload=False)
-    return app
+    urls = ['/mildred', docapi.app_api, '', webapp.app_www]
+    return web.application(urls, globals(), autoreload=False)
 
 if __name__ == '__main__':
     mdb.initDBConnection()

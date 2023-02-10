@@ -16,8 +16,7 @@ headers = {'user-agent': 'Mildred/3.3.3 (cc.aifetel.mildred; build:3.3.3; Linux)
 def caclSignature(secretkey, timestamp, nonce):
     secretkey.extend([timestamp, nonce])
     secretkey.sort()
-    retval = hashlib.sha1(''.join(secretkey).encode('utf8')).hexdigest()
-    return retval
+    return hashlib.sha1(''.join(secretkey).encode('utf8')).hexdigest()
 
 def pushNotification(lid, sid, did, title, content, url):
     timestamp = str(time.time())
@@ -25,10 +24,11 @@ def pushNotification(lid, sid, did, title, content, url):
     signature = caclSignature([sid,did], timestamp, nonce)
     params = {"ts":timestamp, "nc":nonce, "sn":signature, "sync":'', "tl":title, "ct":content, "url":url}
     data = urllib.parse.urlencode(params).encode("utf-8")
-    req = urllib.request.Request("%s/domapi/lic/%s/push"%(ATXT_HOST,lid), data=data, headers=headers)
+    req = urllib.request.Request(
+        f"{ATXT_HOST}/domapi/lic/{lid}/push", data=data, headers=headers
+    )
     if ATXT_HOST.lower().startswith('https'):
         res = urllib.request.urlopen(req, context=context)
     else:
         res = urllib.request.urlopen(req)
-    retval = res.read().decode("utf-8")
-    return retval
+    return res.read().decode("utf-8")

@@ -162,25 +162,18 @@ def check_signature(lid, ts, nonce, sig):
         retval = rsa.verify(''.join(vdata).encode('utf8'), base64.b64decode(sig), pubkey)
         if retval == 'SHA-1':
             return {}
-        else:
-            load_pubkeys()
-            pempub = web.config.vars.pubkeys.get(lid,{}).get('PUBKEY','')
-            pubkey = rsa.PublicKey.load_pkcs1(pempub)
-            retval = rsa.verify(''.join(vdata).encode('utf8'), base64.b64decode(sig), pubkey)
-            if retval == 'SHA-1':
-                return {}
-            else:
-                return {'errmsg': 'Invalid signature'}
+        load_pubkeys()
+        pempub = web.config.vars.pubkeys.get(lid,{}).get('PUBKEY','')
+        pubkey = rsa.PublicKey.load_pkcs1(pempub)
+        retval = rsa.verify(''.join(vdata).encode('utf8'), base64.b64decode(sig), pubkey)
+        return {} if retval == 'SHA-1' else {'errmsg': 'Invalid signature'}
     except Exception as e:
         try:
             load_pubkeys()
             pempub = web.config.vars.pubkeys.get(lid,{}).get('PUBKEY','')
             pubkey = rsa.PublicKey.load_pkcs1(pempub)
             retval = rsa.verify(''.join(vdata).encode('utf8'), base64.b64decode(sig), pubkey)
-            if retval == 'SHA-1':
-                return {}
-            else:
-                return {'errmsg': 'Invalid signature'}
+            return {} if retval == 'SHA-1' else {'errmsg': 'Invalid signature'}
         except Exception as e:
             traceback.print_exc()
             return {'errmsg': 'Invalid signature'}
@@ -238,8 +231,14 @@ def del_license_bind(lid):
         return {}
 
 def list_devices():
-    if not dbsl: return []
-    return dbsl.select("DM_CLIENTS", what="LICENSEID, SERVERID, SERVERNAME, SERVERURL, DEVICEID, DEVICENAME, ISPRIMARY").list()
+    return (
+        dbsl.select(
+            "DM_CLIENTS",
+            what="LICENSEID, SERVERID, SERVERNAME, SERVERURL, DEVICEID, DEVICENAME, ISPRIMARY",
+        ).list()
+        if dbsl
+        else []
+    )
 
 def del_device(did, dlid):
     if not dbsl: return {'errmsg': 'No database'}
@@ -336,9 +335,12 @@ def list_alert(lid, cname):
     swhere = "LICENSEID=$lid AND ALTYPE>0"
     if cname:
         swhere += " and CNAME=$cname"
-    retval = dbsl.select("DM_ALERTS", what="ALID,CNAME,ALTYPE,ALSTR,ALVAL,ALENABLED,ALPUSH,ALLEVEL",
-        vars=locals(), where=swhere).list()
-    return retval
+    return dbsl.select(
+        "DM_ALERTS",
+        what="ALID,CNAME,ALTYPE,ALSTR,ALVAL,ALENABLED,ALPUSH,ALLEVEL",
+        vars=locals(),
+        where=swhere,
+    ).list()
 
 def chk_alert(params):
     if not params.lid: return {'errmsg': 'Invalid Client'}
@@ -350,29 +352,30 @@ def chk_alert(params):
     if params.altype == 1:
         pass
     elif params.altype == 2:
-        if params.alval.isdigit() and int(params.alval) > 0 and int(params.alval) < 100:
-            pass
-        else:
+        if (
+            not params.alval.isdigit()
+            or int(params.alval) <= 0
+            or int(params.alval) >= 100
+        ):
             return {'errmsg': 'Invalid Value'}
     elif params.altype == 3:
-        if params.alval.isdigit() and int(params.alval) > 0:
-            pass
-        else:
+        if not params.alval.isdigit() or int(params.alval) <= 0:
             return {'errmsg': 'Invalid Value'}
     elif params.altype == 4:
         ipport = params.alstr.split(":")
-        if len(ipport) == 2 and web.validipaddr(ipport[0]) and web.validipport(ipport[1]):
-            pass
-        else:
+        if (
+            len(ipport) != 2
+            or not web.validipaddr(ipport[0])
+            or not web.validipport(ipport[1])
+        ):
             return {'errmsg': 'Invalid host:port'}
     elif params.altype == 5:
         if not params.alstr.lower().startswith(('http:','https:')):
             return {'errmsg': 'Invalid URL'}
-    if not (params.enabled == 1 or params.enabled == "1"): params.enabled = 0
-    if not (params.push == 1 or params.push == "1"): params.push = 0
+    if params.enabled not in [1, "1"]: params.enabled = 0
+    if params.push not in [1, "1"]: params.push = 0
     if not params.level.isdigit(): return {'errmsg': 'Invalid Level'}
-    if int(params.level) not in (1,2,3): return {'errmsg': 'Invalid Level'}
-    return {}
+    return {} if int(params.level) in {1, 2, 3} else {'errmsg': 'Invalid Level'}
 
 def set_alert(params):
     if not dbsl: return {'errmsg': 'No database'}
@@ -442,10 +445,13 @@ def list_newmsg(lid, cname):
     swhere = "A.ALID=M.ALID and A.LICENSEID=$lid and M.ISREAD=0"
     if cname:
         swhere += " AND A.CNAME=$cname"
-    retval = dbsl.select("DM_ALERTS A, DM_MESSAGE M",
+    return dbsl.select(
+        "DM_ALERTS A, DM_MESSAGE M",
         what="A.ALID,A.CNAME,ALTYPE,ALLEVEL,MSGID,MSGSTAMP,ISREAD,ISPUSHED,MSGKEYWORD,MSGBODY,MSGURL",
-        vars=locals(), where=swhere, order="M.MSGID desc").list()
-    return retval
+        vars=locals(),
+        where=swhere,
+        order="M.MSGID desc",
+    ).list()
 
 def count_message2(lid, cname, skey=''):
     if not dbsl: return []
@@ -453,7 +459,7 @@ def count_message2(lid, cname, skey=''):
     if cname:
         swhere += " AND A.CNAME=$cname"
     if skey:
-        skey = '%'+skey+'%'
+        skey = f'%{skey}%'
         swhere += " AND MSGBODY like $skey"
     return web.listget(dbsl.select("DM_ALERTS A, DM_MESSAGE M", what="COUNT(MSGID) CNT",vars=locals(), where=swhere).list(),0,{}).get('CNT',0)
 
@@ -465,14 +471,19 @@ def list_message(lid, cname, alid='', skey='', isrd='', offset=0, limit=20):
     if alid:
         swhere += " AND A.ALID=$alid"
     if skey:
-        skey = '%'+skey+'%'
+        skey = f'%{skey}%'
         swhere += " AND (MSGBODY like $skey or datetime(MSGSTAMP, 'unixepoch', 'localtime') like $skey)"
     if isrd:
         swhere += " AND ISREAD<2"
-    retval = dbsl.select("DM_ALERTS A, DM_MESSAGE M",
+    return dbsl.select(
+        "DM_ALERTS A, DM_MESSAGE M",
         what="A.ALID,A.CNAME,ALTYPE,ALLEVEL,MSGID,MSGSTAMP,ISREAD,ISPUSHED,MSGKEYWORD,MSGBODY,MSGURL",
-        vars=locals(), where=swhere, order="ISREAD, M.MSGID desc", offset=offset, limit=limit).list()
-    return retval
+        vars=locals(),
+        where=swhere,
+        order="ISREAD, M.MSGID desc",
+        offset=offset,
+        limit=limit,
+    ).list()
 
 def new_message(data):
     if not dbsl: return {'errmsg': 'No database'}
@@ -490,11 +501,20 @@ def new_message(data):
         return {'MSGID':msgid}
 
 def get_message(msgid):
-    if not dbsl: return {'errmsg': 'No database'}
-    retval = web.listget(dbsl.select("DM_ALERTS A, DM_MESSAGE M",
-        what="A.ALID,A.CNAME,ALTYPE,ALLEVEL,MSGID,MSGSTAMP,ISREAD,ISPUSHED,MSGKEYWORD,MSGBODY,MSGURL",
-        vars=locals(), where="A.ALID=M.ALID AND M.MSGID=$msgid").list(),0,{})
-    return retval
+    return (
+        web.listget(
+            dbsl.select(
+                "DM_ALERTS A, DM_MESSAGE M",
+                what="A.ALID,A.CNAME,ALTYPE,ALLEVEL,MSGID,MSGSTAMP,ISREAD,ISPUSHED,MSGKEYWORD,MSGBODY,MSGURL",
+                vars=locals(),
+                where="A.ALID=M.ALID AND M.MSGID=$msgid",
+            ).list(),
+            0,
+            {},
+        )
+        if dbsl
+        else {'errmsg': 'No database'}
+    )
 
 def set_message(msgid, isread):
     if not dbsl: return {'errmsg': 'No database'}
@@ -557,16 +577,25 @@ def push_message(lid, pkey, data):
     if not lobj.get('EXNOTIISON'): return {'errmsg': 'External notification is off'}
     if not pkey or (pkey and lobj.get('EXNOTIPASS')!=pkey): return {'errmsg': 'Require password to send external notification'}
     if not data.get('body'): return {'errmsg': 'body required'}
-    if '%s'%data.get('level','') not in ('1','2','3'): data['level'] = 1
+    if f"{data.get('level', '')}" not in ('1', '2', '3'): data['level'] = 1
     from . import apush
     try:
         aobj = web.listget(dbsl.select("DM_ALERTS", vars=locals(), where="LICENSEID=$lid and CNAME='--sys--' and ALTYPE=0 and ALENABLED=0").list(), 0, None)
-        if not aobj:
-            alid = dbsl.insert("DM_ALERTS", ALSTR = '', ALVAL = '', ALPUSH = 1,
-                LICENSEID = lid, CNAME = '--sys--', ALTYPE = 0, ALENABLED = 0, ALLEVEL = data.get('level', 1)
+        alid = (
+            aobj.ALID
+            if aobj
+            else dbsl.insert(
+                "DM_ALERTS",
+                ALSTR='',
+                ALVAL='',
+                ALPUSH=1,
+                LICENSEID=lid,
+                CNAME='--sys--',
+                ALTYPE=0,
+                ALENABLED=0,
+                ALLEVEL=data.get('level', 1),
             )
-        else:
-            alid = aobj.ALID
+        )
         msgid = dbsl.insert("DM_MESSAGE",
             ALID        = alid,
             MSGSTAMP    = time.time(),
@@ -581,48 +610,56 @@ def push_message(lid, pkey, data):
             lobj = web.config.vars.pubkeys.get(lid)
         if lobj.get('push_expire',0)<=time.time():
             return {'errmsg': 'License/Push service expired'}
-        else:
-            retval = apush.pushNotification(lobj.get('LICENSEID',''), lobj.get('SERVERID',''), lobj.get('DEVICEID',''), data.get('title',''), data.get('body',''),
-                'domapp://message/%s?lid=%s'%(msgid,lid))
-            retval = formator.json_object(retval)
-            return retval
+        retval = apush.pushNotification(
+            lobj.get('LICENSEID', ''),
+            lobj.get('SERVERID', ''),
+            lobj.get('DEVICEID', ''),
+            data.get('title', ''),
+            data.get('body', ''),
+            f'domapp://message/{msgid}?lid={lid}',
+        )
+        retval = formator.json_object(retval)
+        return retval
     except Exception as e:
         return {'errmsg': str(e)}
 
 
 
 def list_compose():
-    if not dbsl: return []
-    return dbsl.select("DM_COMPOSE").list()
+    return dbsl.select("DM_COMPOSE").list() if dbsl else []
 
 def add_compose(fpath):
     if not dbsl: return {'errmsg': 'No database'}
-    realpath = utils.prefixStorageDir(fpath) if not os.path.isabs(fpath) else fpath
+    realpath = fpath if os.path.isabs(fpath) else utils.prefixStorageDir(fpath)
     if not os.path.isfile(realpath):
-        return {'errmsg': 'File %s not exists'%fpath}
+        return {'errmsg': f'File {fpath} not exists'}
     folder = os.path.split(os.path.abspath(realpath))[0]
-    if not web.listget(dbsl.select("DM_COMPOSE", vars=locals(), where="FILEPATH=$fpath and FOLDER=$folder").list(),0):
-        if fpath.lower().endswith(('yaml', 'yml')):
-            alias = os.path.basename(os.path.split(fpath)[0])
-        else:
-            alias = os.path.basename(fpath)
-        t = dbsl.transaction()
-        try:
-            dbsl.insert("DM_COMPOSE", ALIAS=alias, FILEPATH=fpath, FOLDER=folder)
-        except Exception as e:
-            t.rollback()
-            traceback.print_exc()
-            return {"errmsg":e}
-        else:
-            t.commit()
-            return {}
+    if web.listget(dbsl.select("DM_COMPOSE", vars=locals(), where="FILEPATH=$fpath and FOLDER=$folder").list(),0):
+        return {"errmsg": f"{fpath} already exists"}
+    alias = (
+        os.path.basename(os.path.split(fpath)[0])
+        if fpath.lower().endswith(('yaml', 'yml'))
+        else os.path.basename(fpath)
+    )
+    t = dbsl.transaction()
+    try:
+        dbsl.insert("DM_COMPOSE", ALIAS=alias, FILEPATH=fpath, FOLDER=folder)
+    except Exception as e:
+        t.rollback()
+        traceback.print_exc()
+        return {"errmsg":e}
     else:
-        return {"errmsg":"%s already exists"%fpath}
+        t.commit()
+        return {}
 
 def get_compose(cmpsid):
     if not dbsl: return
-    retval = web.listget(dbsl.select("DM_COMPOSE", vars=locals(), where="CMPSID=$cmpsid").list(),0)
-    return retval
+    return web.listget(
+        dbsl.select(
+            "DM_COMPOSE", vars=locals(), where="CMPSID=$cmpsid"
+        ).list(),
+        0,
+    )
 
 def set_compose(cmpsid, alias):
     if not dbsl: return {'errmsg': 'No database'}

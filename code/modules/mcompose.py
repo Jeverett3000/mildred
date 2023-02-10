@@ -28,12 +28,11 @@ def execShell(cmd):
 def iterateShellCall(cmd):
     import subprocess, io
     proc = subprocess.Popen(args=cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
-        yield line
+    yield from io.TextIOWrapper(proc.stdout, encoding="utf-8")
 
 def iterateTest(count):
     for x in range(1,count):
-        yield "%s"%x
+        yield f"{x}"
         time.sleep(0.5)
 
 
@@ -106,14 +105,12 @@ def compose_images(fname):
     retval = []
     if not os.path.isfile(fname): return retval
     if not fname.lower().endswith(('.yaml','.yml')): return retval
-    retdat = callShell('docker-compose -f %s --no-ansi images -q'%fname)
+    retdat = callShell(f'docker-compose -f {fname} --no-ansi images -q')
     iids = [y for x in retdat.split('\r\n') for y in x.split('\n')]
     try:
         retdic = mdocker.tree_image()
         for imgid in iids:
-            iobj = retdic.get(imgid)
-            if not iobj: iobj = retdic.get('sha256:'+imgid)
-            if iobj:
+            if iobj := retdic.get(imgid) or retdic.get(f'sha256:{imgid}'):
                 retval.append(iobj)
     except Exception as e:
         pass
@@ -123,7 +120,7 @@ def compose_containers(fname):
     retval = []
     if not os.path.isfile(fname): return retval
     if not fname.lower().endswith(('.yaml','.yml')): return retval
-    retdat = callShell('docker-compose -f %s --no-ansi ps -q'%fname)
+    retdat = callShell(f'docker-compose -f {fname} --no-ansi ps -q')
     cids = [y for x in retdat.split('\r\n') for y in x.split('\n')]
     try:
         retval = [mdocker.dict_container(x) for x in dclient.api.containers(all=True) if x["Id"] in cids]
@@ -140,31 +137,24 @@ def compose_filebody(fname):
     return retval
 
 def compose_test(count):
-    fi = iterateTest(count)
-    return fi
+    return iterateTest(count)
 
 def compose_up(fname):
-    retval = iterateShellCall('docker-compose -f %s --no-ansi up -d'%fname)
-    return retval
+    return iterateShellCall(f'docker-compose -f {fname} --no-ansi up -d')
 
 def compose_down(fname):
-    retval = iterateShellCall('docker-compose -f %s --no-ansi down'%fname)
-    return retval
+    return iterateShellCall(f'docker-compose -f {fname} --no-ansi down')
 
 def compose_start(fname):
-    retval = iterateShellCall('docker-compose -f %s --no-ansi start'%fname)
-    return retval
+    return iterateShellCall(f'docker-compose -f {fname} --no-ansi start')
 
 def compose_stop(fname):
-    retval = iterateShellCall('docker-compose -f %s --no-ansi stop'%fname)
-    return retval
+    return iterateShellCall(f'docker-compose -f {fname} --no-ansi stop')
 
 def compose_restart(fname):
-    retval = iterateShellCall('docker-compose -f %s --no-ansi restart'%fname)
-    return retval
+    return iterateShellCall(f'docker-compose -f {fname} --no-ansi restart')
 
 def compose_remove(fname):
-    retval = iterateShellCall('docker-compose -f %s --no-ansi rm -f'%fname)
-    return retval
+    return iterateShellCall(f'docker-compose -f {fname} --no-ansi rm -f')
 
 

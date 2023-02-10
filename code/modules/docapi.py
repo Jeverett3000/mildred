@@ -58,30 +58,31 @@ app_api = web.application(urls_rest, locals())
 
 class CtrlIndex:
     def GET(self):
-        if mdb.get_syskey('ENABLE_BIND', '0') == '1':
-            ipaddress = web.ctx.env.get('HTTP_X_REAL_IP') or web.ctx.env.get('REMOTE_ADDR') or 'Unknown'
-            protocol = web.ctx.get('protocol') or 'http'
-            realhome = web.ctx.get('realhome') or 'unknown'
-            if web.ctx.env.get('HTTP_X_FORWARDED_PROTO') and web.ctx.env['HTTP_X_FORWARDED_PROTO']!=protocol:
-                realhome = realhome.replace(protocol, web.ctx.env['HTTP_X_FORWARDED_PROTO'])
-            req_uri = web.ctx.env.get('REQUEST_URI', 'path')
-            dockinfo = mdocker.get_dkinfo()
-            dcmpinfo = mcompose.compose_info()
-            render = variant.get_render('index')
-            pagedata = {
-                "dockinfo": dockinfo,
-                "realhome": realhome,
-                "req_uri": req_uri,
-                "dkok": "errmsg" not in dockinfo,
-                "dcok": dcmpinfo[0].find('not found')<0,
-                "stok": os.path.isdir('../storage'),
-                "ssok": not realhome.startswith('https://') and not web.validipaddr(web.ctx.get('host')),
-            }
-            if 'ID' in dockinfo:
-                pagedata['imgr'] = "https://dom.aifetel.cc/domapi/qrcode?sid=%s&url=%s"%(dockinfo['ID'],realhome)
-            return render(pagedata)
-        else:
-            return 'Mildred Add-on Version: %s'%mdb.get_syskey('VERSION', '1')
+        if mdb.get_syskey('ENABLE_BIND', '0') != '1':
+            return f"Mildred Add-on Version: {mdb.get_syskey('VERSION', '1')}"
+        ipaddress = web.ctx.env.get('HTTP_X_REAL_IP') or web.ctx.env.get('REMOTE_ADDR') or 'Unknown'
+        protocol = web.ctx.get('protocol') or 'http'
+        realhome = web.ctx.get('realhome') or 'unknown'
+        if web.ctx.env.get('HTTP_X_FORWARDED_PROTO') and web.ctx.env['HTTP_X_FORWARDED_PROTO']!=protocol:
+            realhome = realhome.replace(protocol, web.ctx.env['HTTP_X_FORWARDED_PROTO'])
+        req_uri = web.ctx.env.get('REQUEST_URI', 'path')
+        dockinfo = mdocker.get_dkinfo()
+        dcmpinfo = mcompose.compose_info()
+        render = variant.get_render('index')
+        pagedata = {
+            "dockinfo": dockinfo,
+            "realhome": realhome,
+            "req_uri": req_uri,
+            "dkok": "errmsg" not in dockinfo,
+            "dcok": dcmpinfo[0].find('not found')<0,
+            "stok": os.path.isdir('../storage'),
+            "ssok": not realhome.startswith('https://') and not web.validipaddr(web.ctx.get('host')),
+        }
+        if 'ID' in dockinfo:
+            pagedata[
+                'imgr'
+            ] = f"https://dom.aifetel.cc/domapi/qrcode?sid={dockinfo['ID']}&url={realhome}"
+        return render(pagedata)
 
 
 class SignatureHooker:
@@ -106,7 +107,7 @@ class CtrlServerBind:
             return formator.json_string({'errmsg': 'Invalid request'})
         otp = utils.getRandomNumber(6)
         variant.binding_otps = {params.lid: otp}
-        utils.outMessage('Binding OTP: %s'%otp)
+        utils.outMessage(f'Binding OTP: {otp}')
         return formator.json_string({})
     def POST(self):
         if mdb.get_syskey('ENABLE_BIND', '0') != '1':
@@ -186,20 +187,19 @@ class CtrlServerInfo(SignatureHooker):
         retval = mdocker.get_dkinfo()
         if "errmsg" in retval:
             return formator.json_string(retval)
-        else:
-            sname, cserver, surl = mdb.get_serverinfo(params.lid)
-            retval['URI'] = surl or realhome
-            retval['Name'] = sname or retval['Name']
-            retval['code_server'] = cserver
-            retval['msg_counts'] = mdb.count_message1(params.lid)
-            retval['msg_news'] = mdb.list_newmsg(params.lid, '--sys--')
-            retval['enable_bind'] = mdb.get_syskey('ENABLE_BIND', '0')
-            retval['enable_stat'] = variant.enable_stat
-            retval['inside_container'] = variant.inside_container
-            retval['licinfo'] = {
-                'push_expire': variant.pubkeys.get(params.lid,{}).get('push_expire')
-            }
-            return formator.json_string({'body':retval})
+        sname, cserver, surl = mdb.get_serverinfo(params.lid)
+        retval['URI'] = surl or realhome
+        retval['Name'] = sname or retval['Name']
+        retval['code_server'] = cserver
+        retval['msg_counts'] = mdb.count_message1(params.lid)
+        retval['msg_news'] = mdb.list_newmsg(params.lid, '--sys--')
+        retval['enable_bind'] = mdb.get_syskey('ENABLE_BIND', '0')
+        retval['enable_stat'] = variant.enable_stat
+        retval['inside_container'] = variant.inside_container
+        retval['licinfo'] = {
+            'push_expire': variant.pubkeys.get(params.lid,{}).get('push_expire')
+        }
+        return formator.json_string({'body':retval})
     def POST(self):
         SignatureHooker.checkSignature(self)
         params = web.input(lid='', sname='')
@@ -312,7 +312,7 @@ class CtrlMessageList:
         params = web.input(lid='', cname='', alid='', skey='', isrd='', offset=0, limit=20)
         retdat = mdb.list_message(params.lid, params.cname, params.alid, params.skey, params.isrd, params.offset, params.limit)
         total = 0
-        if params.offset == 0 or params.offset == '0':
+        if params.offset in [0, '0']:
             total = mdb.count_message2(params.lid, params.cname, params.skey)
         return formator.json_string({'body':retdat, 'total':total})
     def POST(self):
@@ -480,7 +480,7 @@ class CtrlComposeList:
         SignatureHooker.checkSignature(self)
         params = web.input()
         retlst = mdb.list_compose()
-        cmpsinfo = mcompose.compose_info() if not retlst else ['', '']
+        cmpsinfo = ['', ''] if retlst else mcompose.compose_info()
         retval = {'body': retlst, 'cmpsver':cmpsinfo[0], 'cmpstip':cmpsinfo[1]}
         return formator.json_string(retval)
     def POST(self):
@@ -513,11 +513,15 @@ class CtrlComposeInfo:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return formator.json_string({'errmsg': 'No such compose file'})
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         cpobj['file_exists'] = os.path.isfile(fpath)
         if cpobj['file_exists']:
             st = os.stat(fpath)
-            cpobj['stmode'] = '%s'%oct(stat.S_IMODE(st.st_mode))
+            cpobj['stmode'] = f'{oct(stat.S_IMODE(st.st_mode))}'
         cpobj['images'] = mcompose.compose_images(fpath)
         cpobj['containers'] = mcompose.compose_containers(fpath)
         cpobj['filebody'] = mcompose.compose_filebody(fpath)
@@ -529,16 +533,12 @@ def needAddChunkedHeader():
     port1 = web.ctx.environ.get('SERVER_PORT', '')
     host = web.ctx.environ.get('HTTP_HOST', '').split(':')
     port2 = host[1] if len(host)==2 else '80'
-    if server.find('Cheroot')>=0:
-        if variant.inside_container:
-            cobj = mcompose.get_selfcontainer()
-            if port2 in [x['PublicPort'] for x in cobj['Ports'] if 'PublicPort' in x]:
-                return True
-            return False
-        else:
-            return port1 == port2
-    else:
+    if server.find('Cheroot') < 0:
         return False
+    if not variant.inside_container:
+        return port1 == port2
+    cobj = mcompose.get_selfcontainer()
+    return port2 in [x['PublicPort'] for x in cobj['Ports'] if 'PublicPort' in x]
 
 
 class CtrlComposeUp:
@@ -548,7 +548,11 @@ class CtrlComposeUp:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         retval = mcompose.compose_up(fpath)
         web.header('Content-type','application/octet-stream')
         if needAddChunkedHeader():
@@ -566,7 +570,11 @@ class CtrlComposeDown:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         retval = mcompose.compose_down(fpath)
         web.header('Content-type','application/octet-stream')
         if needAddChunkedHeader():
@@ -584,7 +592,11 @@ class CtrlComposeStart:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         retval = mcompose.compose_start(fpath)
         web.header('Content-type','application/octet-stream')
         if needAddChunkedHeader():
@@ -601,7 +613,11 @@ class CtrlComposeRestart:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         retval = mcompose.compose_restart(fpath)
         web.header('Content-type','application/octet-stream')
         if needAddChunkedHeader():
@@ -619,7 +635,11 @@ class CtrlComposeStop:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         retval = mcompose.compose_stop(fpath)
         web.header('Content-type','application/octet-stream')
         if needAddChunkedHeader():
@@ -637,7 +657,11 @@ class CtrlComposeRemove:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         retval = mcompose.compose_remove(fpath)
         web.header('Content-type','application/octet-stream')
         if needAddChunkedHeader():
@@ -655,13 +679,17 @@ class CtrlComposeShell:
         cpobj = mdb.get_compose(cmpsid)
         if not cpobj:
             return 'No such compose file'
-        fpath = utils.prefixStorageDir(cpobj.FILEPATH) if not os.path.isabs(cpobj.FILEPATH) else cpobj.FILEPATH
+        fpath = (
+            cpobj.FILEPATH
+            if os.path.isabs(cpobj.FILEPATH)
+            else utils.prefixStorageDir(cpobj.FILEPATH)
+        )
         if fpath.lower().endswith('.py'):
-            retval = mcompose.iterateShellCall('python '+fpath)
+            retval = mcompose.iterateShellCall(f'python {fpath}')
         elif fpath.lower().endswith('.sh'):
-            retval = mcompose.iterateShellCall('bash '+fpath)
+            retval = mcompose.iterateShellCall(f'bash {fpath}')
         elif fpath.lower().endswith('.js'):
-            retval = mcompose.iterateShellCall('node '+fpath)
+            retval = mcompose.iterateShellCall(f'node {fpath}')
         else:
             retval = mcompose.iterateShellCall(fpath)
         web.header('Content-type','application/octet-stream')
@@ -690,7 +718,7 @@ class CtrlStaticFiles:
             f = open(inpath, 'rb')
         except IOError:
             raise web.notfound()
-        web.header("Content-Type", ctype if ctype else "application/octet-stream; charset=UTF-8")
+        web.header("Content-Type", ctype or "application/octet-stream; charset=UTF-8")
         fs = os.fstat(f.fileno())
         web.header("Content-Length", str(fs[6]))
         content = f.read()

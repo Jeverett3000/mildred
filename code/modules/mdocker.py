@@ -16,21 +16,22 @@ def get_dkinfo():
         return {"errmsg": str(e)}
     dkinfo = dclient.info()
     cpu_usage, mem_usage = get_cm_usage()
-    retval = {
+    return {
         'URI': '',
         'ID': utils.get_sha1(dkinfo['ID']),
         'Name': dkinfo['Name'],
-        'ProductLicense': dkinfo.get('ProductLicense',''),
+        'ProductLicense': dkinfo.get('ProductLicense', ''),
         'ServerVersion': dkinfo['ServerVersion'],
         'SystemTime': formator.get_ts_from_utcstr(dkinfo['SystemTime']),
-        'NCPU': dkinfo['NCPU'], 'CpuUsage': cpu_usage,
-        'MemTotal': dkinfo['MemTotal'], 'MemUsage': mem_usage,
+        'NCPU': dkinfo['NCPU'],
+        'CpuUsage': cpu_usage,
+        'MemTotal': dkinfo['MemTotal'],
+        'MemUsage': mem_usage,
         'OperatingSystem': dkinfo['OperatingSystem'],
         'OSType': dkinfo['OSType'],
         'Images': dkinfo['Images'],
         'Containers': dkinfo['Containers'],
     }
-    return retval
 
 
 def dict_container(cobj):
@@ -41,8 +42,12 @@ def dict_container(cobj):
             'image': cobj.attrs['Config']['Image'],
             'status': cobj.status,
             'Created': int(formator.get_ts_from_utcstr(cobj.attrs['Created'])),
-            'StartedAt': formator.get_docker_status(cobj.attrs['State']['Running'], cobj.attrs['State']['ExitCode'], cobj.attrs['State']['StartedAt']),
-            'ports': ','.join(set([x.split('/')[0] for x in cobj.ports.keys()])),
+            'StartedAt': formator.get_docker_status(
+                cobj.attrs['State']['Running'],
+                cobj.attrs['State']['ExitCode'],
+                cobj.attrs['State']['StartedAt'],
+            ),
+            'ports': ','.join({x.split('/')[0] for x in cobj.ports.keys()}),
         }
     elif isinstance(cobj, dict):
         return {
@@ -52,7 +57,13 @@ def dict_container(cobj):
             'status': cobj['State'],
             'Created': cobj['Created'],
             'StartedAt': cobj['Status'],
-            'ports': ','.join(set(['%s'%(x['PublicPort']) for x in cobj['Ports'] if 'PublicPort' in x and 'Type' in x])),
+            'ports': ','.join(
+                {
+                    f"{x['PublicPort']}"
+                    for x in cobj['Ports']
+                    if 'PublicPort' in x and 'Type' in x
+                }
+            ),
         }
     else:
         return {}
@@ -84,7 +95,7 @@ def get_dct_container(cname):
     except Exception as e:
         retval = []
     if not retval:
-        raise docker.errors.NotFound("No such container: %s"%cname)
+        raise docker.errors.NotFound(f"No such container: {cname}")
     else:
         return retval[0]
 
@@ -124,16 +135,38 @@ def inspect_container(cname):
     try:
         cobj = dclient.containers.get(cname)
         cdct = get_dct_container(cname)
-        nets = [(key, val) for key, val in utils.copy_dict(cobj.attrs['NetworkSettings'], ['IPAddress', 'Gateway']).items()]
+        nets = list(
+            utils.copy_dict(
+                cobj.attrs['NetworkSettings'], ['IPAddress', 'Gateway']
+            ).items()
+        )
         if (not nets or not nets[0] or not nets[0][1] ) and cobj.attrs['HostConfig']['NetworkMode'] in cobj.attrs['NetworkSettings']['Networks']:
-            nets = [(key, val) for key, val in utils.copy_dict(cobj.attrs['NetworkSettings']['Networks'][ cobj.attrs['HostConfig']['NetworkMode'] ], ['IPAddress', 'Gateway']).items()]
-        return {"body":{
-            'Cmd': cdct['Command'],
-            'Env': [x.split('=') for x in cobj.attrs['Config']['Env']],
-            'Mounts': [utils.copy_dict(x, ['Source', 'Destination', 'Mode']) for x in cobj.attrs['Mounts']],
-            'Networks': nets,
-            'Ports': [(key, '%s:%s'%(val[0]['HostIp'],val[0]['HostPort'])) for key, val in cobj.attrs['NetworkSettings']['Ports'].items() if val],
-        }}
+            nets = list(
+                utils.copy_dict(
+                    cobj.attrs['NetworkSettings']['Networks'][
+                        cobj.attrs['HostConfig']['NetworkMode']
+                    ],
+                    ['IPAddress', 'Gateway'],
+                ).items()
+            )
+        return {
+            "body": {
+                'Cmd': cdct['Command'],
+                'Env': [x.split('=') for x in cobj.attrs['Config']['Env']],
+                'Mounts': [
+                    utils.copy_dict(x, ['Source', 'Destination', 'Mode'])
+                    for x in cobj.attrs['Mounts']
+                ],
+                'Networks': nets,
+                'Ports': [
+                    (key, f"{val[0]['HostIp']}:{val[0]['HostPort']}")
+                    for key, val in cobj.attrs['NetworkSettings'][
+                        'Ports'
+                    ].items()
+                    if val
+                ],
+            }
+        }
     except Exception as e:
         traceback.print_exc()
         return {"errmsg":e}
@@ -205,10 +238,7 @@ def recurse_backward(cname, tslast, dtbase, lines, movedays, retval=[]):
 
 def avg(l):
     r = [x for x in l if x != None]
-    if len(r) == 0:
-        return 0
-    else:
-        return sum(r)/len(r)
+    return sum(r)/len(r) if r else 0
 
 def nsum(l):
     r = [x for x in l if x != None]
@@ -221,10 +251,21 @@ def get_stat_mindata(ts='0'):
     cnames = [x['name'] for x in list_container()]
     if ts and formator.isFloat(ts):
         ff = lambda val : [x for x in val if x[0]>float(ts)]
-        retval = dict([(cname,ff(val)) for cname, val in variant.mindata.items() if cname in cnames])
+        return dict(
+            [
+                (cname, ff(val))
+                for cname, val in variant.mindata.items()
+                if cname in cnames
+            ]
+        )
     else:
-        retval = dict([(cname,val) for cname, val in variant.mindata.items() if cname in cnames])
-    return retval
+        return dict(
+            [
+                (cname, val)
+                for cname, val in variant.mindata.items()
+                if cname in cnames
+            ]
+        )
 
 def get_cm_usage(cname=''):
     alldata = get_stat_mindata()
@@ -235,9 +276,15 @@ def get_cm_usage(cname=''):
 def get_top6_mindata(ts='0'):
     from functools import cmp_to_key
     alldata = get_stat_mindata(ts)
-    top6name = []
-    for cname in alldata.keys():
-        top6name.append([cname, alldata[cname][-1][2] if len(alldata[cname])>0 and len(alldata[cname][-1])>2 else 0])
+    top6name = [
+        [
+            cname,
+            alldata[cname][-1][2]
+            if len(alldata[cname]) > 0 and len(alldata[cname][-1]) > 2
+            else 0,
+        ]
+        for cname in alldata.keys()
+    ]
     top6name.sort(key=cmp_to_key(lambda a, b: b[1]-a[1]))
     retval = {}
     count = 1
@@ -248,17 +295,14 @@ def get_top6_mindata(ts='0'):
     timearray = []
     for cname, tmpl in alldata.items():
         timearray.extend([x[0] for x in tmpl])
-    timearray = list(set(timearray))
-    timearray.sort()
+    timearray = sorted(set(timearray))
     retval['Others'] = {}
     for cname, tmpl in alldata.items():
         for curritem in tmpl:
             currtime = curritem[0]
             saveitem = retval['Others'].get(currtime)
-            if not saveitem:
-                retval['Others'][currtime] = curritem
-            else:
-                retval['Others'][currtime] = [
+            retval['Others'][currtime] = (
+                [
                     currtime,
                     round(saveitem[1] + curritem[1], 2),
                     saveitem[2] + curritem[2],
@@ -272,6 +316,9 @@ def get_top6_mindata(ts='0'):
                     saveitem[10] + curritem[10],
                     saveitem[11] + curritem[11],
                 ]
+                if saveitem
+                else curritem
+            )
     retval['Others'] = list(retval['Others'].values())
     retval['Others'].sort(key=cmp_to_key(lambda a, b: a[0]-b[0]))
     return retval
@@ -281,17 +328,17 @@ def stat_container(cname):
     try:
         return next(ster)
     except StopIteration as e:
-        utils.outMessage('Stat StopIteration: %s'%cname)
+        utils.outMessage(f'Stat StopIteration: {cname}')
         if container_exists_byname(cname):
             ster = dclient.api.stats(cname, decode=True)
             variant.staters[cname] = ster
         else:
             variant.staters.pop(cname)
     except docker.errors.NotFound as e:
-        utils.outMessage('Stat NotFound: %s'%cname)
+        utils.outMessage(f'Stat NotFound: {cname}')
         variant.staters.pop(cname)
     except Exception as e:
-        utils.outMessage('Stat Exception: %s'%cname)
+        utils.outMessage(f'Stat Exception: {cname}')
         variant.staters.pop(cname)
 
 def stat_transfer(cname, sdat):
@@ -305,15 +352,23 @@ def stat_transfer(cname, sdat):
             stime = ldat[0]+1
         rdat = [
             stime,
-            round(cs['cpu_usage']['total_usage']/cs['system_cpu_usage']*100,2),
+            round(
+                cs['cpu_usage']['total_usage'] / cs['system_cpu_usage'] * 100,
+                2,
+            ),
             sdat['memory_stats']['usage'],
-            round(sdat['memory_stats']['usage']/sdat['memory_stats']['limit']*100,2),
+            round(
+                sdat['memory_stats']['usage']
+                / sdat['memory_stats']['limit']
+                * 100,
+                2,
+            ),
             sdat['networks']['eth0']['rx_bytes'] if 'networks' in sdat else 0,
             sdat['networks']['eth0']['tx_bytes'] if 'networks' in sdat else 0,
             None,
             None,
-            sum([x['value'] for x in ds if x['op']=='Read']),
-            sum([x['value'] for x in ds if x['op']=='Write']),
+            sum(x['value'] for x in ds if x['op'] == 'Read'),
+            sum(x['value'] for x in ds if x['op'] == 'Write'),
             None,
             None,
         ]
@@ -394,8 +449,8 @@ def stat_run_once():
         mdat = stat_carry2minute(cname)
         alert_watch_2345(cname, mdat)
         if mdat and variant.alertcm.get('--sys--'):
-            cpusum = sum([v[-1][1] for v in variant.mindata.values() if v])
-            memsum = sum([v[-1][2] for v in variant.mindata.values() if v])
+            cpusum = sum(v[-1][1] for v in variant.mindata.values() if v)
+            memsum = sum(v[-1][2] for v in variant.mindata.values() if v)
             fakemdat = [time.time(), cpusum, memsum]
             alert_watch_2345('--sys--', fakemdat)
         stat_carry2hour(cname)
@@ -460,9 +515,7 @@ def logs_keepiters():
             variant.logthds[cname].start()
 
 def logs_run_once(cname):
-    while True:
-        if cname not in variant.logiers: break
-        if cname not in variant.alertlg: break
+    while cname in variant.logiers and cname in variant.alertlg:
         time.sleep(0.1)
         try:
             logtxt = variant.logiers[cname].next().decode()
@@ -484,11 +537,14 @@ def logs_run_once(cname):
                     lobj = variant.pubkeys.get(aobj.LICENSEID,{})
                     if not msgret.get('errmsg') and aobj.ALPUSH==1 and lobj.get('push_expire',0)>time.time():
                         try:
-                            pshret = apush.pushNotification(aobj.LICENSEID,
-                                lobj.get('SERVERID',''),
-                                lobj.get('DEVICEID',''),
-                                '%s Log alert'%lobj.get('SERVERNAME',''),
-                                testmsg["MSGBODY"], 'domapp://message/%s?lid=%s'%(msgret['MSGID'],aobj.LICENSEID))
+                            pshret = apush.pushNotification(
+                                aobj.LICENSEID,
+                                lobj.get('SERVERID', ''),
+                                lobj.get('DEVICEID', ''),
+                                f"{lobj.get('SERVERNAME', '')} Log alert",
+                                testmsg["MSGBODY"],
+                                f"domapp://message/{msgret['MSGID']}?lid={aobj.LICENSEID}",
+                            )
                         except Exception as e:
                             utils.outMessage(str(e))
         except Exception as e:
@@ -503,9 +559,7 @@ def stat_daemon():
     try:
         stat_init()
         utils.outMessage('Start stat_daemon')
-        while True:
-            if variant['enable_stat'] != '1':
-                break
+        while variant['enable_stat'] == '1':
             time.sleep(0.01)
             stat_keepiters()
             stat_run_once()
@@ -548,12 +602,16 @@ def alert_watch_2345(cname, mdat):
         if aobj.ALTYPE == 2 and mdat:
             testisok = mdat[1] < aobj.ALVAL
             if not testisok:
-                testmsg["MSGBODY"] = "CPU usage %s > the set value %s"%(round(mdat[1],2), aobj.ALVAL)
+                testmsg[
+                    "MSGBODY"
+                ] = f"CPU usage {round(mdat[1], 2)} > the set value {aobj.ALVAL}"
                 testtlt = 'CPU alert'
         if aobj.ALTYPE == 3 and mdat:
             testisok = mdat[2] < aobj.ALVAL*1024*1024
             if not testisok:
-                testmsg["MSGBODY"] = "Memory usage %s MB > the set value %s MB"%(round(mdat[2]/1024/1024,2), aobj.ALVAL)
+                testmsg[
+                    "MSGBODY"
+                ] = f"Memory usage {round(mdat[2] / 1024 / 1024, 2)} MB > the set value {aobj.ALVAL} MB"
                 testtlt = 'Memory alert'
         if aobj.ALTYPE == 4:
             ipport = aobj.ALSTR.split(":")
@@ -578,11 +636,14 @@ def alert_watch_2345(cname, mdat):
             lobj = variant.pubkeys.get(aobj.LICENSEID,{})
             if not msgret.get('errmsg') and aobj.ALPUSH==1 and lobj.get('push_expire',0)>time.time():
                 try:
-                    pshret = apush.pushNotification(aobj.LICENSEID,
-                        lobj.get('SERVERID',''),
-                        lobj.get('DEVICEID',''),
-                        '%s %s'%(lobj.get('SERVERNAME',''), testtlt),
-                        testmsg["MSGBODY"], 'domapp://message/%s?lid=%s'%(msgret['MSGID'],aobj.LICENSEID))
+                    pshret = apush.pushNotification(
+                        aobj.LICENSEID,
+                        lobj.get('SERVERID', ''),
+                        lobj.get('DEVICEID', ''),
+                        f"{lobj.get('SERVERNAME', '')} {testtlt}",
+                        testmsg["MSGBODY"],
+                        f"domapp://message/{msgret['MSGID']}?lid={aobj.LICENSEID}",
+                    )
                 except Exception as e:
                     utils.outMessage(str(e))
         else:
@@ -646,7 +707,7 @@ def tree_image():
                 mdat = dict_image(m, tag, parents, all_container)
                 retdic[mdat['id']] = mdat
         import copy
-        for mid, mdat in retdic.items():
+        for mdat in retdic.values():
             if mdat['Parent'] and mdat['Parent']['id'] in retdic:
                 child = copy.copy(mdat)
                 child.pop('Parent',None)
@@ -665,8 +726,7 @@ def tree_image():
 def list_image():
     try:
         retdic = tree_image()
-        retval = list(retdic.values())
-        return retval
+        return list(retdic.values())
     except Exception as e:
         traceback.print_exc()
         return []
